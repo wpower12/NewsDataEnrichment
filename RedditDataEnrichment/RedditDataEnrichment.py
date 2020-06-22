@@ -99,9 +99,10 @@ def build_OS_Net_from_outlet_counts(outlet_summaries, result_fn):
             line_elements = line.split(", ")
             sub = line_elements[0]
             count = int(line_elements[1])
-            print((outlet_name, sub, count))
-            subreddit_nodes.add(sub)
-            edge_list.append((outlet_name, sub, count))
+            if count > 0:
+                print((outlet_name, sub, count))
+                subreddit_nodes.add(sub)
+                edge_list.append((outlet_name, sub, count))
 
     os_g = nx.Graph()
     os_g.add_nodes_from(outlet_nodes, bipartite=0)
