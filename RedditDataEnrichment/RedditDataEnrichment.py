@@ -84,6 +84,55 @@ def tag_articles(reddit, sublist_fn, article_list_fn, outlet_summary_fn):
     result_file.close()
 
 
+def tag_articles_save_URLs(reddit, sublist_fn, article_list_fn, outlet_summary_fn):
+    # First just grab the sub list.
+    sublist_f   = open(sublist_fn, 'r')
+    sub_list = []
+    sublist_f.readline()  # Read off the 'label row'
+    for line in sublist_f:
+        res = line.split(',')
+        res[1] = int(res[1].rstrip('\n'))
+        sub_list.append(res)
+    sublist_f.close()
+
+    # Now build 'results' list. Instead of making the SQL query, we can just write to a file for now?
+    url_list_f  = open(article_list_fn, 'r')
+    result_file = open(outlet_summary_fn, 'w')
+
+    url_list_f.readline()
+    curr_line = 1
+    counts = {}
+    for s in sub_list:
+        counts[s[0]] = 0
+
+    while True:
+        curr_line += 1
+        line = url_list_f.readline()
+        if line == "":
+            break
+
+        data_row = line.split('	')
+        if len(data_row) <= 1:
+            break
+        url = data_row[1]
+        print(url)
+        article_sub_tags = []  # The list of subs that have the article in them.
+
+        # Check each sub in the sub list for the url
+        for sub in sub_list:
+            sub_name = sub[0]
+            sub_obj = reddit.subreddit(sub_name)
+            search_res = sub_obj.search("url:{}".format(url))
+            if len(list(search_res)) > 0:
+                print("\tfound url in {}".format(sub_name))
+                article_sub_tags.append(sub_name)
+                counts[sub_name] += 1
+                result_file.write("{}, {}\n".format(url, sub_name))
+
+    url_list_f.close()
+    result_file.close()
+
+
 def build_OS_Net_from_outlet_counts(outlet_summaries, result_fn):
     # Assume that outlet summaries is a list of pairs ("<outlet_name>", outlet_summary_fn)
 
@@ -123,3 +172,24 @@ def build_OS_Net_from_outlet_counts(outlet_summaries, result_fn):
         result_f.write("{}\n".format(e))
 
     result_f.close()
+
+
+def reddit_enrichment(db, reddit, query):
+    seed_subs, where_str = query
+
+    # Create new entry in the query table, save the queryID
+
+    # Gather list of subreddits, add to the metadata for the same query.
+
+    # Insert subreddits into the SocialGroups table, if unique
+
+    # Use where str to gather all the articles
+
+    # Iterate over articles
+        # When there is a 'hit' add a new 'row' to the 'insert string' for a final query
+        # "INSERT INTO Thread ... (URL, Title, SocialGroupID, ArticleID)
+        # Save the ThreadID in a list?
+
+    # Push all the new threads to the DB
+
+    # Add all ThreadIDs to the Query Table -> (QueryID, Query, ThreadID)
