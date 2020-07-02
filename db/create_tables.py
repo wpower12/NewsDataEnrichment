@@ -2,7 +2,8 @@ import pymysql
 import time
 from collections import OrderedDict
 
-############################## ESTABLISH A CONNECTION ###############################
+
+######################## CREATE DB AND ESTABLISH CONNECTION ########################
 def connection(hostname, username, password, dbName):
     conn = pymysql.connect(host=hostname, user=username, passwd=password)
     cur = conn.cursor()
@@ -11,8 +12,14 @@ def connection(hostname, username, password, dbName):
     conn.close()
     conn = pymysql.connect(host=hostname, user=username, passwd=password,db=dbName)
     return conn
-
 #####################################################################################
+
+
+################################## END CONNECTION ###################################
+def end_connection(conn):
+    conn.close()
+#####################################################################################
+
 
 ################################### CREATE TABLES ###################################
 def create_tables(conn):
@@ -20,63 +27,63 @@ def create_tables(conn):
     tables = OrderedDict()
     tables['NewsOutlet'] = (
         "CREATE TABLE IF NOT EXISTS `news_outlet`("
-        " `newsoutletid` int(10) NOT NULL,"
-        " `name` varchar(50) NOT NULL,"
-        " `url` varchar(300) NOT NULL,"
+        " `newsoutletid` int(20) NOT NULL,"
+        " `name` varchar(500),"
+        " `url` varchar(500),"
         "  PRIMARY KEY (`newsoutletid`))ENGINE=InnoDB"
     )
     tables['NewsArticle'] = (
         "CREATE TABLE IF NOT EXISTS `news_article`("
-        " `articleid` int(10) AUTO_INCREMENT PRIMARY KEY,"
-        " `title` varchar(200) NOT NULL,"
-        " `url` varchar(300) NOT NULL,"
-        " `googletime` varchar(20),"
-        " `publishtime` varchar(20),"
-        " `newsoutletid` int(10),"
-        # "  PRIMARY KEY (`articleid`),"
+        " `articleid` int(20) NOT NULL,"
+        " `title` varchar(500),"
+        " `url` varchar(500),"
+        " `googletime` varchar(100),"
+        " `publishtime` varchar(100),"
+        " `newsoutletid` int(20),"
+        "  PRIMARY KEY (`articleid`),"
         "  CONSTRAINT `outlet_article_fk1` FOREIGN KEY (`newsoutletid`) "
         "  REFERENCES `news_outlet` (`newsoutletid`) ON DELETE NO ACTION) ENGINE=InnoDB"
     )
     tables['SocialNetwork'] = (
         "CREATE TABLE IF NOT EXISTS `social_network`("
-        " `socialnetworkid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `name` varchar(100) NOT NULL,"
-        " `url` varchar(300) NOT NULL,"
+        " `socialnetworkid` int(20) NOT NULL AUTO_INCREMENT,"
+        " `name` varchar(500),"
+        " `url` varchar(500),"
         "  PRIMARY KEY (`socialnetworkid`))ENGINE=InnoDB"
     )
     tables['SocialGroup'] = (
         "CREATE TABLE IF NOT EXISTS `social_group`("
-        " `socialgroupid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `name` varchar(100) NOT NULL,"
+        " `socialgroupid` varchar(200) NOT NULL,"
+        " `name` varchar(500),"
         " `description` text ,"
-        " `url` varchar(300) NOT NULL ,"
-        " `numberofsubscribers` int(10),"
-        " `publishtime` varchar(20),"
-        " `socialnetworkid` int(10) ,"
+        " `url` varchar(500),"
+        " `numberofsubscribers` int(20),"
+        " `publishtime` varchar(100),"
+        " `socialnetworkid` int(20) ,"
         "  PRIMARY KEY (`socialgroupid`),"
         "  CONSTRAINT `social_group_fk1` FOREIGN KEY (`socialnetworkid`) " 
         "  REFERENCES `social_network` (`socialnetworkid`) ON DELETE NO ACTION) ENGINE=InnoDB"
     )
     tables['User'] = (
         "CREATE TABLE IF NOT EXISTS `user`("
-        " `userid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `username` varchar(100) NOT NULL,"
-        " `url` varchar(300) NOT NULL ,"
-        " `karmapoints` int(10),"
-        " `dateofbirth` int(10),"
+        " `userid` varchar(200) NOT NULL,"
+        " `username` varchar(500) NOT NULL,"
+        " `url` varchar(500),"
+        " `karmapoints` int(20),"
+        " `dateofbirth` int(100),"
         "  PRIMARY KEY (`userid`)) ENGINE=InnoDB"
     )
     tables['Thread'] = (
         "CREATE TABLE IF NOT EXISTS `thread`("
-        " `threadid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `url` varchar(300) NOT NULL ,"
-        " `userid` int(10) ,"
-        " `title` varchar(200),"
+        " `threadid` varchar(200) NOT NULL,"
+        " `url` varchar(500),"
+        " `userid` varchar(200) ,"
+        " `title` varchar(500),"
         " `description` text,"
-        " `publishtime` int(10),"
-        " `tag` varchar(50),"
-        " `socialgroupid` int(10),"
-        " `articleid` int(10),"
+        " `publishtime` int(20),"
+        " `tag` varchar(100),"
+        " `socialgroupid` varchar(200),"
+        " `articleid` int(20),"
         "  PRIMARY KEY (`threadid`),"
         "  CONSTRAINT `user_thread_fk1` FOREIGN KEY (`userid`) " 
         "  REFERENCES `user` (`userid`) ON DELETE NO ACTION ,"
@@ -87,45 +94,39 @@ def create_tables(conn):
     )
     tables['comment'] = (
         "CREATE TABLE IF NOT EXISTS `comment`("
-        " `commentid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `parentid` int(10) ,"
-        " `url` varchar(300) NOT NULL ,"
-        " `userid` int(10) NOT NULL,"
-        " `numpoints` int(10),"
+        " `commentid` varchar(200) NOT NULL,"
+        " `parentid` int(20) ,"
+        # " `url` varchar(500),"
+        " `userid` varchar(200),"
+        " `numpoints` int(20),"
         " `text` text,"
-        " `publishtime` int(10),"
-        " `threadid` int(10) ,"
+        " `publishtime` int(100),"
+        " `threadid` varchar(200) ,"
         "  PRIMARY KEY (`commentid`),"
         "  CONSTRAINT `user_comment_fk1` FOREIGN KEY (`userid`) "
         "  REFERENCES `user` (`userid`) ON DELETE NO ACTION ,"
         "  CONSTRAINT `thread_comment_fk2` FOREIGN KEY (`threadid`) "
         "  REFERENCES `thread` (`threadid`) ON DELETE NO ACTION) ENGINE=InnoDB"
     )
-    tables['Query'] = (
-        "CREATE TABLE IF NOT EXISTS `query`("
-        " `queryid` int(10) NOT NULL AUTO_INCREMENT,"
-        " `query` text ,"
-        " `threadid` int(10) ,"
-        "  PRIMARY KEY (`queryid`),"
-        "  CONSTRAINT `thread_query_fk1` FOREIGN KEY (`threadid`) "
-        "  REFERENCES `thread` (`threadid`) ON DELETE NO ACTION) ENGINE=InnoDB"
-    )
-    tables['InsertTestOutlets'] = (
-        "INSERT INTO news_outlet (newsoutletid, name, url) VALUES "
-        "(0, 'fn', 'fox.com'), "
-        "(1, 'wsj', 'wsj.com'), "
-        "(2, 'wp', 'wp.com'), "
-        "(3, 'nyt', 'nyt.com');"
-    )
-
+    # tables['Query'] = (
+    #     "CREATE TABLE IF NOT EXISTS `query`("
+    #     " `queryid` int(20) NOT NULL AUTO_INCREMENT,"
+    #     " `query` text ,"
+    #     " `threadid` int(20) ,"
+    #     "  PRIMARY KEY (`queryid`),"
+    #     "  CONSTRAINT `thread_query_fk1` FOREIGN KEY (`threadid`) "
+    #     "  REFERENCES `thread` (`threadid`) ON DELETE NO ACTION) ENGINE=InnoDB"
+    # )
 
     for name, ddl in tables.items():
+        st = time.time()
         cur.execute(ddl)
         print("Creating table {}: ".format(name), end='')
-        print(time.process_time())
+        print('%s sec' % '{:.6f}'.format(time.time() - st))
         conn.commit()
 
 #####################################################################################
+
 
 ####################################### MAIN ########################################
 def main():
@@ -136,12 +137,15 @@ def main():
     dbName = 'news_db_test'
     conn = connection(host, username, password, dbName)
 
+    # Create tables and calculate process time
     print('Start Time for creating tables: ', end='')
-    start_CT = time.process_time()
-    print(start_CT)
+    start_time = time.time()
     create_tables(conn)
-    print('End Time for creating tables: ', end='')
-    print(time.process_time() - start_CT)
+    print('Total time for creating tables: ', end='')
+    print('%s sec' % '{:.6f}'.format(time.time() - start_time))
+
+    # Close connection
+    end_connection(conn)
 
 if ( __name__ == "__main__"):
     main()
