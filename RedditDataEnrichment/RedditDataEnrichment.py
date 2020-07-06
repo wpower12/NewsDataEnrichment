@@ -5,7 +5,8 @@ from networkx.algorithms import bipartite
 import matplotlib.pyplot as plt
 
 
-def collect_subreddits(reddit, depth, seeds, sublist_fn):
+def collect_subreddits_txt(reddit, depth, seeds, sublist_fn):
+    # TODO - Update this to be a set, add a forbiddens set, return the difference at the end? idk. 
     f = open(sublist_fn, 'w')
     sub_list = []
     for seed_sub in seeds:
@@ -27,6 +28,31 @@ def collect_subreddits(reddit, depth, seeds, sublist_fn):
             subs_to_process = temp_list
     f.close()
     print("Full set of subreddits saved to: {}".format(sublist_fn))
+
+
+def collect_subreddits(reddit, depth, seeds):
+    sub_list = set()
+    forbiddens = set()
+    for seed_sub in seeds:
+        seed = reddit.subreddit(seed_sub)
+        subs_to_process = [seed]
+        # 'depth 0' is adding just the  seed to the list, so we have to go to 1 more than depth in our range.
+        for d in range(depth + 1):
+            print("Processing: {}".format(subs_to_process))
+            temp_list = []
+            for s in subs_to_process:
+                try:
+                    sub_list.add(s)
+                    for widget in s.widgets.sidebar:
+                        if isinstance(widget, praw.models.CommunityList):
+                            temp_list.extend(widget)
+                            break
+                except prawcore.exceptions.Forbidden:
+                    forbiddens.add(s)
+                    print("col_subs - Forbidden Sub: {}".format(s.display_name))
+            subs_to_process = temp_list
+
+    return list(sub_list.difference(forbiddens))
 
 
 def tag_articles(reddit, sublist_fn, article_list_fn, outlet_summary_fn):
@@ -174,22 +200,66 @@ def build_OS_Net_from_outlet_counts(outlet_summaries, result_fn):
     result_f.close()
 
 
-def reddit_enrichment(db, reddit, query):
-    seed_subs, where_str = query
+def reddit_enrichment(reddit, db, depth, seeds):
+    # Returns a list of the collected subs. Each element is a PRAW object that can be searched.
+    subs = collect_subreddits(reddit, depth, seeds)
 
-    # Create new entry in the query table, save the queryID
+    # Adding the collected subreddits to the social_groups table.
+    # IGNOREing the duplicates.
+    with db.cursor() as cur:
+        sub_query = "INSERT IGNORE INTO social_group (socialgroupid, name) VALUES\n"
+        values = []
+        for s in subs:
+            try:
+                values.append(s.id)
+                values.append(s.display_name)
+                sub_query += "(%s, %s),\n"
+            except prawcore.exceptions.Forbidden:
+                print("rde - Forbidden Sub: {}".format(s.display_name))
 
-    # Gather list of subreddits, add to the metadata for the same query.
+        sub_query = sub_query.rstrip(",\n")+";"
+        cur.execute(sub_query, values)
+        db.commit()
 
-    # Insert subreddits into the SocialGroups table, if unique
+    with db.cursor() as cur:
+        art_query = "SELECT `articleid`, `url` FROM news_article;"
+        cur.execute(art_query)
 
-    # Use where str to gather all the articles
+        article = cur.fetchone()
+        count = 0
+        while article:
+            url = article[1]
+            thread_list = []
+            for sub in subs:
+                try:
+                    sub_name = sub.display_name
+                    sub_obj = reddit.subreddit(sub_name)
+                    for thread in sub_obj.search("url:{}".format(url)):
+                        thread_list.append([thread, sub_obj.id])
 
-    # Iterate over articles
-        # When there is a 'hit' add a new 'row' to the 'insert string' for a final query
-        # "INSERT INTO Thread ... (URL, Title, SocialGroupID, ArticleID)
-        # Save the ThreadID in a list?
+                except prawcore.exceptions.Forbidden:
+                    print("f")
+                    pass
 
-    # Push all the new threads to the DB
+            print(count, article, thread_list)
 
-    # Add all ThreadIDs to the Query Table -> (QueryID, Query, ThreadID)
+            if len(thread_list) > 0:
+                # Create the INSERT query for this article.
+                # INSERT (threadid, url, articleid, socialgroupid) INTO thread VALUES ...
+                # Use the PRAW object id for the thread id, use the same articleid, use 1 for reddit for socialgroupid)w
+                thread_query = "INSERT IGNORE INTO thread (threadid, url, articleid, socialgroupid) VALUES\n"
+                vals = []
+                for t in thread_list:
+                    thread, sub_id = t
+                    thread_query += "(%s, %s, %s, %s)\n"
+                    vals.append(thread.id)
+                    vals.append(thread.url)
+                    vals.append(article[0])
+                    vals.append(sub_id)
+                thread_query = thread_query.rstrip("\n")+";"
+                print(thread_query)
+                cur.execute(thread_query, vals)
+
+            count += 1
+            article = cur.fetchone()
+        db.commit()
