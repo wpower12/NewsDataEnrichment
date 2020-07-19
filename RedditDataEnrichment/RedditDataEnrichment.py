@@ -3,6 +3,7 @@ import prawcore
 import networkx as nx
 from networkx.algorithms import bipartite
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def collect_subreddits_txt(reddit, depth, seeds, sublist_fn):
@@ -263,3 +264,89 @@ def reddit_enrichment(reddit, db, depth, seeds):
             count += 1
             article = cur.fetchone()
         db.commit()
+
+
+def reddit_enrichment_v2(reddit, conn, depth, seeds):
+    cur = conn.cursor()
+    subs = collect_subreddits(reddit, depth, seeds)
+
+    # UPDATING social_groups TABLE - Adding the collected groups subreddits to the social_groups table.
+    table = 'social_group'
+    sn_id = 1 # fixed value since we are collecting from one social network - Reddits sn_id #
+    columns = ['socialgroupid', 'name', 'description', 'url', 'numberofsubscribers', 'publishtime', 'socialnetworkid']
+    sub_values = pd.DataFrame(columns=columns)
+    for s in subs:
+        try:
+            sub_values = sub_values.append({'socialgroupid': s.id,
+                                            'name': s.display_name,
+                                            'description': s.description,
+                                            'url': "www.reddit.com/r/{}".format(s.display_name),
+                                            'socialnetworkid': sn_id}, ignore_index=True)
+        except prawcore.exceptions.Forbidden:
+            print("rde - Forbidden Sub: {}".format(s.display_name))
+
+    # replace nan values with none and clean up cols object
+    sub_values = sub_values.astype(object).where(pd.notnull(sub_values), None)
+    cols = "`,`".join([str(i) for i in sub_values.columns.tolist()])
+
+    # insert values into "social_groups" table
+    for i, row in sub_values.iterrows():
+        sql = "INSERT IGNORE INTO `" + table + "` (`" + cols + "`) VALUES (" + "%s," * (len(row) - 1) + "%s)"
+        cur.execute(sql, tuple(row))
+        conn.commit()
+    print('Done inserting ' + table)
+
+    # UPDATING THREAD TABLE - Find posts in reddit and adding them to thread table.
+    table = 'news_article'
+
+    # FULL QUERY - All articles, uncomment when we leave testing
+    art_query = "SELECT `articleid`, `url` FROM `" + table + "` ;"
+
+    # TEST QUERY - Smaller subset of articles, from a single outlet. Comment out when we leave testing
+    # outlet_id = 173
+    # art_query = "SELECT `articleid`, `url` FROM `" + table + "` WHERE `newsoutletid` = " + str(outlet_id) + \
+    #             " AND ( `articleid` = 241 or `articleid` = 561 or `articleid` = 1367 " + \
+    #             "or `articleid` = 6147 or `articleid` = 12327 or `articleid` = 24359 " + \
+    #             "or `articleid` = 31174 or `articleid` = 31349 or `articleid` = 89298 " + \
+    #             "or `articleid` = 1554723) ;"
+
+    cur.execute(art_query)
+    article = pd.DataFrame(cur.fetchall())
+
+    # change article object to tuples composed of [[articleid, url]]
+    urls = list(zip(article[0].tolist(), article[1].tolist()))
+
+    # search for related posts and save it to thread list
+    # columns = ['threadid', 'url', 'userid', 'title', 'description', 'publishtime', 'tag',
+    #            'socialgroupid', 'articleid']
+
+    columns = ['threadid', 'url', 'title', 'publishtime', 'socialgroupid', 'articleid']
+    cols = "`,`".join([str(i) for i in columns])
+    table = 'thread'
+
+    # thread_values = pd.DataFrame(columns=columns)
+    for i in urls:
+        for sub in subs:
+            try:
+                sub_name = sub.display_name
+                sub_obj = reddit.subreddit(sub_name)
+                for thread in sub_obj.search("url:{}".format(i[1])):
+                    thread_values = [thread.id,
+                                     thread.permalink,
+                                     thread.title,
+                                     thread.created_utc,
+                                     sub_obj.id,
+                                     i[0]]          # Article ID
+
+                    sql = "INSERT IGNORE INTO `" + table + "` (`" + cols + "`) VALUES (%s, %s, %s, %s, %s, %s );"
+                    cur.execute(sql, thread_values)
+                    conn.commit()
+                    print("Inserted Thread: {}".format(thread.title))
+
+            # Forbidden to access by reddit
+            except prawcore.exceptions.Forbidden:
+                print("f")
+                pass
+
+    print('Done inserting ' + table)
+
