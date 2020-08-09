@@ -1,15 +1,12 @@
 import praw
 import prawcore
 import networkx as nx
-from networkx.algorithms import bipartite
 import matplotlib.pyplot as plt
 import pandas as pd
 
 
 def collect_subreddits_txt(reddit, depth, seeds, sublist_fn):
-    # TODO - Update this to be a set, add a forbiddens set, return the difference at the end? idk. 
     f = open(sublist_fn, 'w')
-    sub_list = []
     for seed_sub in seeds:
         seed = reddit.subreddit(seed_sub)
         subs_to_process = [seed]
@@ -63,8 +60,7 @@ def tag_articles(reddit, sublist_fn, article_list_fn, outlet_summary_fn):
     sublist_f.readline()  # Read off the 'label row'
     for line in sublist_f:
         res = line.split(',')
-        res[1] = int(res[1].rstrip('\n'))
-        sub_list.append(res)
+        sub_list.append((res[0], int(res[1].rstrip('\n'))))
     sublist_f.close()
 
     # Now build 'results' list. Instead of making the SQL query, we can just write to a file for now?
@@ -100,9 +96,6 @@ def tag_articles(reddit, sublist_fn, article_list_fn, outlet_summary_fn):
                 article_sub_tags.append(sub_name)
                 counts[sub_name] += 1
 
-        # Log the tags for the URL
-        # TODO - This is where we'd make the SQL query?
-
     # Save the counts file to the output file.
     for c in counts:
         result_file.write("{}, {}\n".format(c, counts[c]))
@@ -118,8 +111,7 @@ def tag_articles_save_URLs(reddit, sublist_fn, article_list_fn, outlet_summary_f
     sublist_f.readline()  # Read off the 'label row'
     for line in sublist_f:
         res = line.split(',')
-        res[1] = int(res[1].rstrip('\n'))
-        sub_list.append(res)
+        sub_list.append((res[0], int(res[1].rstrip('\n'))))
     sublist_f.close()
 
     # Now build 'results' list. Instead of making the SQL query, we can just write to a file for now?
@@ -272,7 +264,7 @@ def reddit_enrichment_v2(reddit, conn, depth, seeds):
 
     # UPDATING social_groups TABLE - Adding the collected groups subreddits to the social_groups table.
     table = 'social_group'
-    sn_id = 1 # fixed value since we are collecting from one social network - Reddits sn_id #
+    sn_id = 1  # fixed value since we are collecting from one social network - Reddits sn_id #
     columns = ['socialgroupid', 'name', 'description', 'url', 'numberofsubscribers', 'publishtime', 'socialnetworkid']
     sub_values = pd.DataFrame(columns=columns)
     for s in subs:
@@ -350,3 +342,42 @@ def reddit_enrichment_v2(reddit, conn, depth, seeds):
 
     print('Done inserting ' + table)
 
+
+def build_OS_Net_from_outlet_count_db(db, result_fn):
+    count_query = """SELECT nou.name AS 'outlet' , sg.name AS 'social group', COUNT(t.threadid) AS 'num'
+                        FROM news_article as na
+                        JOIN news_outlet as nou
+                                JOIN thread as t
+                        JOIN social_group as sg
+                        ON na.newsoutletid = nou.newsoutletid
+                        AND na.articleid = t.articleid
+                        AND t.socialgroupid = sg.socialgroupid
+                        GROUP BY nou.newsoutletid, sg.socialgroupid;"""
+
+    cur = db.cursor()
+    cur.execute(count_query)
+    db.commit()
+
+    edge_list = []
+    outlet_nodes = set()
+    sub_nodes    = set()
+    for row in cur.fetchall():
+        (no, sg, num) = row
+        edge_list.append((no, sg, num))
+        outlet_nodes.add(no)
+        sub_nodes.add(sg)
+
+    os_g = nx.Graph()
+    os_g.add_nodes_from(list(outlet_nodes), bipartite=0)
+    os_g.add_nodes_from(list(sub_nodes), bipartite=1)
+    os_g.add_weighted_edges_from(edge_list)
+
+    os_g_largest = os_g.subgraph(sorted(nx.connected_components(os_g), key=len, reverse=True)[0]).copy()
+
+    top = nx.bipartite.sets(os_g_largest)[0]
+    pos = nx.bipartite_layout(os_g_largest, top)
+
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    nx.draw_networkx(os_g_largest, ax=ax, pos=pos)
+
+    plt.show()
