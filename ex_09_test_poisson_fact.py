@@ -13,8 +13,5 @@ term_map, term_dict, artid_map, article_counts = pickle.load(open("{}/article_su
 topic_model = HPF(k=K)
 topic_model.fit(coo_matrix(np.asarray(article_counts)))
 
-# For each k in beta, print top_N terms using the maps.
-print(topic_model.Beta)
-
 dill.dump(topic_model, open("{}/test_HPF_topic_model".format(path), 'wb'))
 

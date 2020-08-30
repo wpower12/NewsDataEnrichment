@@ -1,6 +1,7 @@
 import nltk
 from nltk.lm import NgramCounter
-
+import numpy as np
+from scipy.sparse import *
 
 def collect_ngrams(articles):
     onegram_counts = dict()
@@ -66,9 +67,14 @@ def collect_term_dictionary(articles, min_percent=0.001, max_percent=0.30):
     return onegrams, twograms, th3grams
 
 
-def collect_ngrams_db(conn):
+def collect_ngrams_db(conn, testing=False):
     cur = conn.cursor()
-    sql = "SELECT * FROM news_db_test.article_text;"
+
+    if testing:
+        sql = "SELECT * FROM news_db_test.article_text LIMIT 100;"
+    else:
+        sql = "SELECT * FROM news_db_test.article_text;"
+
     cur.execute(sql)
     count = 0
     onegram_counts = dict()
@@ -119,9 +125,9 @@ def collect_ngrams_db(conn):
     return onegram_counts, twogram_counts, th3gram_counts
 
 
-def collect_term_dictionary_db(conn, min_percent=0.001, max_percent=0.30):
+def collect_term_dictionary_db(conn, min_percent=0.001, max_percent=0.30, testing=False):
     print("collecting ngrams.")
-    onegrams, twograms, th3grams = collect_ngrams_db(conn)
+    onegrams, twograms, th3grams = collect_ngrams_db(conn, testing)
 
     # Need to find the threshold count values for keeping one of the grams
     # First need total number of articles.
@@ -154,14 +160,23 @@ def make_term_dict(grams):
     return term_map, grams[0]
 
 
-def get_article_term_counts(conn, term_map):
+def get_article_term_counts(conn, term_map, testing=False):
     counts = []
     artid_map = {}
+    author_map = [] # List of outlet_ids such that outlet(counts[i]) = author_map[i]
+    author_set = set() # Set of all the outlet_ids so we can make the needed data objects later.
     art_idx = 0
     N_terms = len(term_map)
 
     cur = conn.cursor()
-    sql = "SELECT * FROM news_db_test.article_text;"
+
+    if testing:
+        sql = """SELECT art_t.articleid, art_t.extracttext, na.newsoutletid FROM news_db_test.article_text as art_t
+                 JOIN news_db_test.news_article as na on art_t.articleid = na.articleid LIMIT 100;"""
+    else:
+        sql = """SELECT art_t.articleid, art_t.extracttext, na.newsoutletid FROM news_db_test.article_text as art_t
+                         JOIN news_db_test.news_article as na on art_t.articleid = na.articleid;"""
+
     cur.execute(sql)
     article = cur.fetchone()
     while article:
@@ -184,6 +199,8 @@ def get_article_term_counts(conn, term_map):
                     article_counts[idx] = art_ngrams[(terms[0], terms[1])][terms[2]]
 
             counts.append(article_counts)
+            author_map.append(article[2]) # Should be the newsoutletid
+            author_set.add(article[2])
             artid_map[art_idx] = article[0]  # article[0] should be the articleid from the DB
             art_idx += 1  # this is all in case some articles 'fuck up' and get excepted.
             print("finished {}: {}/41273".format(article[0], art_idx))
@@ -192,11 +209,62 @@ def get_article_term_counts(conn, term_map):
             pass
         article = cur.fetchone()
 
-    return counts, artid_map
+    return counts, artid_map, author_map, author_set
 
 
 def clean_and_split_text(input_txt):
-    remove_strs = ["\\n", "-,", "-", ",,", ",", "!"]
+    remove_strs = ["\\\\n", "\\n", "-,", "-", ",,", ",", "!", ".", "-,", "-,,", ",,", ",,,", ",,,,"]
     for s in remove_strs:
         input_txt.replace(s, " ")
     return input_txt.lower().split(" ")
+
+
+def build_tbip_dataset(conn, path_str, testing=False):
+    ones, twos, threes = collect_term_dictionary_db(conn, min_percent=0.01, max_percent=0.3, testing=testing)
+    grams = [ones, twos, threes]
+    term_map, term_dict = make_term_dict(grams)
+
+    counts, artid_map, author_map, author_set = get_article_term_counts(conn, term_map, testing=testing)
+
+    # vocabulary.txt
+    save_vocabtxt(term_map, path_str)
+
+    # author_map.txt, author_indices.npy
+    save_author_files(author_map, author_set, path_str)
+
+    # counts.npz
+    save_counts_file(counts, path_str)
+
+
+def save_vocabtxt(term_map, path_str):
+    fn = "{}/vocabulary.txt"
+    f = open(fn.format(path_str), "w")
+    for t in term_map:
+        f.write("{}\n".format(t))
+    f.close()
+
+
+def save_author_files(author_map, author_set, path_str):
+    author_map_f = open("{}/author_map.txt".format(path_str), "w")
+    author_dict = {}
+    idx = 0
+    for a in author_set:
+        author_map_f.write("{}\n".format(a))
+        author_dict[a] = idx
+        idx += 1
+    author_map_f.close()
+
+    author_indicies = []
+    for a in author_map:
+        author_indicies.append(author_dict[a])
+
+    author_ind_f = open("{}/author_indices.npy".format(path_str), "wb")
+    np.save(author_ind_f, np.asarray(author_indicies))
+    author_ind_f.close()
+
+
+def save_counts_file(counts, path_str):
+    counts_csr = csr_matrix(np.asarray(counts))
+    counts_csr_f = open("{}/counts.npz".format(path_str), "wb")
+    save_npz(counts_csr_f, counts_csr)
+    counts_csr_f.close()

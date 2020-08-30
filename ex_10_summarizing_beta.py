@@ -5,7 +5,7 @@ import dill
 from hpfrec import HPF
 
 K = 10
-top_N = 5
+top_N = 15
 path = "./results"
 
 term_map, term_dict, artid_map, article_counts = pickle.load(open("{}/article_summary_full_test".format(path), "rb"))

@@ -381,3 +381,4 @@ def build_OS_Net_from_outlet_count_db(db, result_fn):
     nx.draw_networkx(os_g_largest, ax=ax, pos=pos)
 
     plt.show()
+
