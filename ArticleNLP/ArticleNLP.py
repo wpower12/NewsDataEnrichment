@@ -171,11 +171,13 @@ def get_article_term_counts(conn, term_map, testing=False):
     cur = conn.cursor()
 
     if testing:
-        sql = """SELECT art_t.articleid, art_t.extracttext, na.newsoutletid FROM news_db_test.article_text as art_t
-                 JOIN news_db_test.news_article as na on art_t.articleid = na.articleid LIMIT 100;"""
+        sql = """SELECT art_t.articleid, art_t.extracttext, news_o.name FROM news_db_test.article_text as art_t
+                 JOIN news_db_test.news_article as na on art_t.articleid = na.articleid
+                 JOIN news_db_test.news_outlet as news_o on na.newsoutletid = news_o.newsoutletid LIMIT 100;"""
     else:
-        sql = """SELECT art_t.articleid, art_t.extracttext, na.newsoutletid FROM news_db_test.article_text as art_t
-                         JOIN news_db_test.news_article as na on art_t.articleid = na.articleid;"""
+        sql = """SELECT art_t.articleid, art_t.extracttext, news_o.name FROM news_db_test.article_text as art_t
+                 JOIN news_db_test.news_article as na on art_t.articleid = na.articleid
+                 JOIN news_db_test.news_outlet as news_o on na.newsoutletid = news_o.newsoutletid;"""
 
     cur.execute(sql)
     article = cur.fetchone()
